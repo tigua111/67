@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>67 Meme Clicker</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body id="body">
+  <main class="app-container" id="app">
+    <div class="counter-container">
+      <h1 id="counter">0</h1>
+    </div>
+
+    <div class="character-container">
+      <div id="idle" class="character idle">
+        <div class="hand hand-left">🖐️</div> 
+        <div class="head">😐</div>
+        <div class="hand hand-right">🖐️</div>
+      </div>
+      
+      <div id="active" class="character active hidden">
+        <div class="hand hand-active-left">🖐️</div> 
+        <div class="head active-head">🤪</div>
+        <div class="hand hand-active-right">🖐️</div>
+      </div>
+    </div>
+
+    <div id="shout" class="shout-container hidden">
+      <span class="shout-text">Six-Seveeeeeen!</span>
+    </div>
+
+    <div class="hint">tap or click to go crazy</div>
+  </main>
+
+  <script>
+    const app = document.getElementById('app');
+    const body = document.getElementById('body');
+    const counterEl = document.getElementById('counter');
+    const idleEl = document.getElementById('idle');
+    const activeEl = document.getElementById('active');
+    const shoutEl = document.getElementById('shout');
+
+    let clicks = parseInt(localStorage.getItem('sixSevenClicks') || '0', 10);
+    counterEl.textContent = clicks;
+
+    let isActive = false;
+    let timeoutId = null;
+
+    let audioCtx = null;
+    let audioBuffer = null;
+    let clickCount = 0;
+    let lastClickTime = 0;
+
+    async function initAudio() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtx = new AudioContextClass();
+        }
+      }
+      
+      if (!audioBuffer && audioCtx) {
+        try {
+          const response = await fetch('/67.mp3');
+          if (response.ok) {
+            const arrayBuffer = await response.arrayBuffer();
+            audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+          }
+        } catch (err) {
+          console.warn('Audio payload failed. Synth fallback engaged.', err);
+        }
+      }
+    }
+
+    function playSound() {
+      if (!audioCtx) return;
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      const now = performance.now();
+      const timeSinceLastClick = now - lastClickTime;
+      
+      if (timeSinceLastClick < 350) {
+        clickCount++;
+      } else {
+        clickCount = 0;
+      }
+      lastClickTime = now;
+
+      const baseSpeed = 1.0 + Math.min(clickCount * 0.08, 1.5);
+      const chaos = (Math.random() - 0.5) * 0.3;
+      const finalPlaybackRate = Math.max(0.5, baseSpeed + chaos);
+
+      if (audioBuffer) {
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.playbackRate.value = finalPlaybackRate;
+        const gainNode = audioCtx.createGain();
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        source.start(0);
+      } else {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        const startTime = audioCtx.currentTime;
+        osc.type = 'sine';
+        const startFreq = 750 * finalPlaybackRate;
+        const endFreq = 150 * finalPlaybackRate;
+        osc.frequency.setValueAtTime(startFreq, startTime);
+        osc.frequency.exponentialRampToValueAtTime(endFreq, startTime + 0.1);
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(1, startTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.1);
+        osc.start(startTime);
+        osc.stop(startTime + 0.12);
+      }
+    }
+
+    function triggerGesture(e) {
+      e.preventDefault();
+      initAudio();
+
+      clicks++;
+      counterEl.textContent = clicks;
+      localStorage.setItem('sixSevenClicks', clicks.toString());
+
+      isActive = true;
+      playSound();
+
+      body.classList.add('bg-flash');
+      idleEl.classList.add('hidden');
+      activeEl.classList.remove('hidden');
+      shoutEl.classList.remove('hidden');
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      
+      timeoutId = setTimeout(() => {
+        isActive = false;
+        body.classList.remove('bg-flash');
+        idleEl.classList.remove('hidden');
+        activeEl.classList.add('hidden');
+        shoutEl.classList.add('hidden');
+      }, 300);
+    }
+
+    app.addEventListener('pointerdown', triggerGesture);
+    app.addEventListener('contextmenu', (e) => e.preventDefault());
+  </script>
+</body>
+</html>
